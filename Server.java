@@ -12,72 +12,95 @@ import java.util.Map;
 public class Server {
 	private ServerSocket serverSocket;
 	private List<Client> clients;
-	
+
 	// der server hat für jeden client genau einen writer, über den
 	// er den clients nachrichten senden kann
 	private Map<Client, PrintWriter> writers = null;
-
 
 	private class ConnectionHandler implements Runnable {
 		private Client client;
 		private PrintWriter writer;
 
-		
 		/**
-		 * Ein Kommando kann maximal aus drei Teilen bestehen:
-		 * prefix: muss
-		 * suffix: muss
-		 * potfix: optional
-		 * 
-		 * Beispiele:
-		 * (1) /w username hallo
-		 * (2) /infos username
+		 * Kommandos: (1) /w username some text here (2) /infos username (3)
+		 * /ignore username (4) /unignore username
 		 */
 		private void handleCommandResponse(String command) {
-			String string = "";
-			
+			String header = "";
+			String body = "";
+
 			// '/' entfernen
-			command = command.substring(1);
-			
-			// String weiter aufteilen [prefix|suffix|postfix]
-			String[] parts = command.split(" ");
-			String prefix = parts[0];
-			
-			String suffix = "";
-			if (parts.length == 1) {
-				writers.get(client).println("Das Kommando ist zu Kurz. Versuch es erneut.");
-				return;
-			}
-			else
-				suffix = parts[1];
-			
-			// optional 
-			String postfix = ""; 
-			if (parts.length > 2)
-				postfix = parts[2];
-			
-			if (command.equals("infos")) { // show all infos about a user
-				string = ("Infos:\n"+client.getNickname()+"\n"+client.getVorname()+" "+client.getNachname()+"\n"+client.getEmail());
-				writers.get(client).println(string);
-				return;
-			}
-			
-			// zur Zeit nur ein zusammenhänges wort (ohne leerzeichen)
-			if (prefix.equals("w")) { // whisper
+			header = command.substring(1);
+
+			if (header.startsWith("infos")) {
+				body = header.substring("infos".length() + 1);
 				
 				for (Client client : clients) {
 					
-					if (client.getNickname().equals(suffix)) {
+					if (client.getNickname().equals(body)) {
+						String infoString = (client.getNickname()+"\n"+client.getVorname()+" "+client.getNachname()+"\n"+client.getEmail()+"\n");
 						
-						writers.get(client).println(client.getNickname() + " flüstert: " + postfix);
-						return;
-					}	
+						// nachricht an den user senden, der den request geschickt hat
+						writers.get(this.client).println(infoString);
+					}
 				}
+				
 			}
 			
-			writers.get(client).println("Dieses Kommando gibt es nicht...");
+			if (header.startsWith("w")) {
+				body = header.substring("w".length() + 1);
+				
+				// username und message extrahieren
+				String username = "";
+				String message = "";
+				for (int i = 0; i < body.length(); i++) {
+					
+					if (body.charAt(i) == ' ') {
+						username = body.substring(0, i);
+						message = body.substring(i+1);
+						break;
+					}
+				}
+				
+				// message an adressierten user senden
+				for (Client client : clients) {
+
+					if (client.getNickname().equals(username) && !client.getIgnoreList().contains(this.client)) 
+						writers.get(client).println(message);
+				}
+			}
+
+			if (header.startsWith("ignore")) {
+				body = header.substring("ignore".length() + 1);
+
+				for (Client client : clients) {
+
+					if (client.getNickname().equals(body)) {
+						List<Client> ignoreList = this.client.getIgnoreList();
+
+						if (!ignoreList.contains(client))
+							ignoreList.add(client);
+					}
+				}
+			}
+
+			if (header.startsWith("unignore")) {
+				body = header.substring("unignore".length() + 1);
+
+				for (Client client : clients) {
+
+					if (client.getNickname().equals(body)) {
+						List<Client> ignoreList = this.client.getIgnoreList();
+
+						if (ignoreList.contains(client))
+							ignoreList.remove(client);
+					}
+				}
+			}
+
+			//writers.get(client).println("Dieses Kommando gibt es nicht...");
 		}
-		
+
 		public ConnectionHandler(Client client, PrintWriter writer) {
 			this.client = client;
 			this.writer = writer;
@@ -96,7 +119,7 @@ public class Server {
 				// können
 				bufferedReader = new BufferedReader(new InputStreamReader(
 						client.getSocket().getInputStream()));
-				
+
 				// Blockieren, bis Client alle Infos rübergeschickt hat
 				client.setNickname(bufferedReader.readLine());
 				client.setVorname(bufferedReader.readLine());
@@ -111,7 +134,9 @@ public class Server {
 					// Falls user manuell eine "disconnect" Nachricht sendet
 					// wird er entfernt
 					if (message.equals("disconnect")) {
-						System.out.println("Habe Disconnect Nachricht erhalten: " + client.getNickname());
+						System.out
+								.println("Habe Disconnect Nachricht erhalten: "
+										+ client.getNickname());
 						break;
 					}
 
@@ -119,15 +144,22 @@ public class Server {
 					if (message.charAt(0) == '/') {
 						handleCommandResponse(message);
 					} else {
-						
+
 						// Textnachrichte an alle anderen clients weitersenden
 						for (Client otherClient : clients) {
 
-							if (!otherClient.equals(client))
-								writers.get(otherClient).println(prefix + message);
-						}	
+							if (!otherClient.equals(client)) {
+
+								if (!otherClient.getIgnoreList().contains(
+										client)) {
+
+									writers.get(otherClient).println(
+											prefix + message);
+								}
+							}
+						}
 					}
-					
+
 					// Nachricht auf der Konsole des Servers ausgeben
 					System.out.println(prefix + message);
 				}
@@ -177,10 +209,11 @@ public class Server {
 				client.setSocket(socket);
 				clients.add(client);
 
-				// Jeder Client bekommt einen eigenen writer, über den ihm der server 
+				// Jeder Client bekommt einen eigenen writer, über den ihm der
+				// server
 				// Nachrichten zusenden kann
-				PrintWriter writer = new PrintWriter(client.getSocket().getOutputStream(),
-						true);
+				PrintWriter writer = new PrintWriter(client.getSocket()
+						.getOutputStream(), true);
 				writers.put(client, writer);
 				writer.println("Der Server hat dich hinzugefuegt.");
 				writer.println("send_infos_to_server");

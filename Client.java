@@ -3,6 +3,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Client {
 	private Socket socket;
@@ -12,6 +14,7 @@ public class Client {
 	private String email = "-";
 	private Thread messageListenerThread = null;
 	PrintWriter writer = null;
+	private List<Client> ignoreList;
 	
 
 	/**
@@ -76,6 +79,7 @@ public class Client {
 		this.vorname = vname;
 		this.nachname = nname;
 		this.email = email;
+		this.ignoreList = new ArrayList<Client>();
 	}
 
 	public void connect(String hostname, int port) {
@@ -166,6 +170,10 @@ public class Client {
 	
 	public void setSocket(Socket socket) {
 		this.socket = socket;
+	}
+	
+	public List<Client> getIgnoreList() {
+		return ignoreList;
 	}
 	
 	
