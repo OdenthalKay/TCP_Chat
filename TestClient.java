@@ -8,6 +8,6 @@ public class TestClient {
 		System.out.println("Bitte Nickname eingeben: ");
 		String nickname = sc.next();
 		Client client = new Client(nickname, "Kay", "Odenthal", "Kay.Odenthal@gmx.de");
-		client.connect("Mac.local", 1111);
+		client.connect("localhost", 1111);
 	}
 }
